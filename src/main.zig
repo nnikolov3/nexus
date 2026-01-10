@@ -1,3 +1,6 @@
+// DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE,
+// CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS
+
 const std = @import("std");
 const Scanner = @import("core/scanner.zig").RealityScanner;
 const Agent = @import("agent.zig").Agent;

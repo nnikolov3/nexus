@@ -1,111 +1,174 @@
-// DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE,
-// CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS
+// DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS
 
 const std = @import("std");
-const Scanner = @import("core/scanner.zig").RealityScanner;
-const Agent = @import("agent.zig").Agent;
+const tools = @import("tools.zig");
 
-// OUR SHARED VALUES:
-// LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, EPISTEMIC HUMILITY
-// "Work is love made visible."
+const HTTP_PORT = 9091;
+const MAX_BODY_SIZE = 10 * 1024 * 1024;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    // Zig 0.15.2: GPA initialization.
+    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = general_purpose_allocator.deinit();
+    const allocator = general_purpose_allocator.allocator();
 
-    // Zig 0.15+ IO: explicit buffers + std.Io interfaces.
-    var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
-    const stdout: *std.Io.Writer = &stdout_writer.interface;
+    const listen_address = try std.net.Address.parseIp("0.0.0.0", HTTP_PORT);
+    var server = try listen_address.listen(.{ .reuse_address = true });
+    defer server.deinit();
 
-    // Increase this if you hit error.StreamTooLong from takeDelimiterExclusive.
-    var stdin_buf: [16 * 1024]u8 = undefined;
-    var stdin_reader = std.fs.File.stdin().reader(&stdin_buf);
-    const stdin: *std.Io.Reader = &stdin_reader.interface;
+    std.debug.print("Tool Executor Service listening on port {d}\n", .{HTTP_PORT});
 
-    try stdout.print("\x1b[1;36m[NEXUS] Initializing Design Partner...\x1b[0m\n", .{});
-    try stdout.flush();
-
-    var scanner = Scanner.init(allocator);
-    defer scanner.deinit();
-
-    // Paths
-    const home = std.process.getEnvVarOwned(allocator, "HOME") catch |err| {
-        std.debug.print("Failed to get HOME: {any}\n", .{err});
-        return;
-    };
-    defer allocator.free(home);
-
-    const mandate_path = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
-    defer allocator.free(mandate_path);
-
-    const templates_dir = try std.fs.path.join(allocator, &.{ home, ".gemini", "templates" });
-    defer allocator.free(templates_dir);
-
-    const db_path = "/home/niko/development/GEMINI_HISTORY.db";
-
-    const api_key = std.process.getEnvVarOwned(allocator, "GEMINI_API_KEY") catch {
-        std.debug.print("GEMINI_API_KEY not set\n", .{});
-        return;
-    };
-    defer allocator.free(api_key);
-
-    // Initialize Reality (static parts)
-    try scanner.loadGlobalMandate(mandate_path);
-    try scanner.loadTemplates(templates_dir);
-
-    var agent = try Agent.init(allocator, api_key, db_path);
-    defer agent.deinit();
-
-    try stdout.print("\x1b[1;32m[NEXUS] Ready. Reality Loaded. Database Connected.\x1b[0m\n", .{});
-    try stdout.flush();
-
-    // REPL Loop
     while (true) {
-        try stdout.print("\n\x1b[1;33mNiko > \x1b[0m", .{});
-        try stdout.flush();
-
-        const raw_line = stdin.takeDelimiterExclusive('\n') catch |err| switch (err) {
-            error.EndOfStream => break,
-            error.StreamTooLong => {
-                std.debug.print("Input line too long for stdin buffer (increase stdin_buf)\n", .{});
-                return err;
-            },
-            else => return err,
+        const connection = try server.accept();
+        handleRequest(allocator, connection) catch |err| {
+            std.debug.print("Error handling request: {any}\n", .{err});
         };
-
-        const line = std.mem.trimRight(u8, raw_line, "\r");
-        if (std.mem.eql(u8, line, "exit")) break;
-        if (line.len == 0) continue;
-
-        // Reset dynamic services state (requires you to have scanner.resetServices()).
-        scanner.resetServices();
-
-        // Dynamic Reality Scan
-        try scanner.scanWorkspace(".");
-
-        const reality_context = try scanner.generateContextPayload();
-        defer allocator.free(reality_context);
-
-        // History Injection
-        const history = try agent.db.getRecentInteractions(10);
-        defer allocator.free(history);
-
-        // Build System Prompt
-        const system_prompt = try std.fmt.allocPrint(
-            allocator,
-            "You are Nexus, a Design Partner.\n\n{s}\n\n{s}\n\n" ++
-                "To use tools, output a JSON block like:\n" ++
-                "```json\n{{ \"tool\": \"run_shell_command\", \"params\": {{ \"command\": \"ls\" }} }}\n```",
-            .{ reality_context, history },
-        );
-        defer allocator.free(system_prompt);
-
-        const response = try agent.chat(system_prompt, line);
-        defer allocator.free(response);
-
-        try stdout.print("\n\x1b[1;35mNexus > \x1b[0m{s}\n", .{response});
-        try stdout.flush();
     }
+}
+
+fn handleRequest(allocator: std.mem.Allocator, connection: std.net.Server.Connection) !void {
+    defer connection.stream.close();
+
+    // Buffers for reader/writer
+    const receive_buffer = try allocator.alloc(u8, 64 * 1024);
+    defer allocator.free(receive_buffer);
+    const send_buffer = try allocator.alloc(u8, 64 * 1024);
+    defer allocator.free(send_buffer);
+
+    // Zig 0.15.2: Initialize HTTP server with reader and writer from stream
+    var reader_struct = connection.stream.reader(receive_buffer);
+    var writer_struct = connection.stream.writer(send_buffer);
+    
+    // Use the interfaces for std.http.Server.init
+    var http_server = std.http.Server.init(reader_struct.interface(), &writer_struct.interface);
+    
+    // Receive request head
+    var request = http_server.receiveHead() catch |err| {
+        std.debug.print("Failed to receive head: {any}\n", .{err});
+        return;
+    };
+
+    const method = request.head.method;
+    const path = request.head.target;
+
+    std.debug.print("Request: {s} {s}\n", .{ @tagName(method), path });
+
+    if (method != .POST) {
+        try sendResponse(&request, .method_not_allowed, "Only POST method is allowed\n");
+        return;
+    }
+
+    // Zig 0.15.2: Read body. We need a buffer for the body reader's internal use.
+    const body_reader_buffer = try allocator.alloc(u8, 8192);
+    defer allocator.free(body_reader_buffer);
+    
+    // readerExpectNone handles the case where no 100-continue is expected.
+    const body_reader = request.readerExpectNone(body_reader_buffer);
+    const body = try body_reader.readAlloc(allocator, MAX_BODY_SIZE);
+    defer allocator.free(body);
+
+    if (std.mem.eql(u8, path, "/read")) {
+        try handleRead(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/write")) {
+        try handleWrite(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/replace-word")) {
+        try handleReplaceWord(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/replace-text")) {
+        try handleReplaceText(allocator, &request, body);
+    } else {
+        try sendResponse(&request, .not_found, "Not Found\n");
+    }
+}
+
+fn handleRead(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "Invalid JSON payload\n");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const file_content = tools.readFile(allocator, payload_result.value.path) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "Error reading file: {any}\n", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer allocator.free(file_content);
+
+    try sendResponse(request, .ok, file_content);
+}
+
+fn handleWrite(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(
+        struct { path: []const u8, content: []const u8 },
+        allocator,
+        body,
+        .{} ,
+    ) catch {
+        try sendResponse(request, .bad_request, "Invalid JSON payload\n");
+        return;
+    };
+    defer payload_result.deinit();
+
+    tools.writeFileWithBackup(allocator, payload_result.value.path, payload_result.value.content) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "Error writing file: {any}\n", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+
+    try sendResponse(request, .ok, "File written successfully\n");
+}
+
+fn handleReplaceWord(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(
+        struct { path: []const u8, old: []const u8, new: []const u8 },
+        allocator,
+        body,
+        .{} ,
+    ) catch {
+        try sendResponse(request, .bad_request, "Invalid JSON payload\n");
+        return;
+    };
+    defer payload_result.deinit();
+
+    tools.replaceWholeWord(allocator, payload_result.value.path, payload_result.value.old, payload_result.value.new) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "Error replacing word: {any}\n", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+
+    try sendResponse(request, .ok, "Word replaced successfully\n");
+}
+
+fn handleReplaceText(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(
+        struct { path: []const u8, old: []const u8, new: []const u8 },
+        allocator,
+        body,
+        .{} ,
+    ) catch {
+        try sendResponse(request, .bad_request, "Invalid JSON payload\n");
+        return;
+    };
+    defer payload_result.deinit();
+
+    tools.replaceText(allocator, payload_result.value.path, payload_result.value.old, payload_result.value.new) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "Error replacing text: {any}\n", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+
+    try sendResponse(request, .ok, "Text replaced successfully\n");
+}
+
+fn sendResponse(request: *std.http.Server.Request, status: std.http.Status, content: []const u8) !void {
+    var response_buffer: [64 * 1024]u8 = undefined;
+    var response = try request.respondStreaming(&response_buffer, .{
+        .respond_options = .{ .status = status },
+    });
+    try response.writer.writeAll(content);
+    try response.end();
 }

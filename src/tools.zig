@@ -15,10 +15,8 @@ pub const ToolError = error{
     InvalidWord,
 };
 
-const MANDATORY_HEADER = "// DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS";
-
 pub fn readFile(allocator: Allocator, path: []const u8) ![]const u8 {
-    const file = filesystem.cwd().openFile(path, .{}) catch |err| switch (err) {
+    const file = filesystem.openFileAbsolute(path, .{}) catch |err| switch (err) {
         error.FileNotFound => return ToolError.FileNotFound,
         else => return ToolError.ReadFailed,
     };
@@ -48,14 +46,20 @@ pub fn writeFileWithBackup(allocator: Allocator, path: []const u8, content: []co
 
     const extension = std.fs.path.extension(path);
     var final_content: []const u8 = content;
-    const needs_header = memory.eql(u8, extension, ".zig") or memory.eql(u8, extension, ".go") or memory.eql(u8, extension, ".js") or memory.eql(u8, extension, ".ts");
+
+    const is_go_js_ts = memory.eql(u8, extension, ".go") or memory.eql(u8, extension, ".js") or memory.eql(u8, extension, ".ts");
+    const is_py_shell_toml_zig = memory.eql(u8, extension, ".py") or memory.eql(u8, extension, ".sh") or memory.eql(u8, extension, ".toml") or memory.eql(u8, extension, ".zig");
 
     var header_buffer: []const u8 = "";
-    if (needs_header and !memory.startsWith(u8, content, "// DO EVERYTHING WITH LOVE")) {
-        header_buffer = try std.fmt.allocPrint(allocator, "{s}\n\n", .{MANDATORY_HEADER});
+    if (is_go_js_ts and !memory.startsWith(u8, content, "/* DO EVERYTHING WITH LOVE")) {
+        header_buffer = try std.fmt.allocPrint(allocator, "/* DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS */\n\n", .{});
+        final_content = try std.mem.concat(allocator, u8, &.{ header_buffer, content });
+    } else if (is_py_shell_toml_zig and !memory.startsWith(u8, content, "# DO EVERYTHING WITH LOVE")) {
+        header_buffer = try std.fmt.allocPrint(allocator, "# DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS\n\n", .{});
         final_content = try std.mem.concat(allocator, u8, &.{ header_buffer, content });
     }
     defer if (header_buffer.len > 0) allocator.free(header_buffer);
+
 
     const temp_path = try std.fmt.bufPrint(&backup_path_buffer, "{s}.tmp", .{path});
     const temp_file = try filesystem.cwd().createFile(temp_path, .{});
@@ -112,4 +116,75 @@ pub fn replaceText(allocator: Allocator, path: []const u8, old_text: []const u8,
     defer allocator.free(replaced_content);
 
     try writeFileWithBackup(allocator, path, replaced_content);
+}
+
+pub fn readCurrentDirectory(allocator: Allocator, path: []const u8) ![]const []const u8 {
+    var dir = try filesystem.openDirAbsolute(path, .{ .iterate = true });
+    defer dir.close();
+
+    var entries = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (entries.items) |item| allocator.free(item);
+        entries.deinit(allocator);
+    }
+
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        try entries.append(allocator, try allocator.dupe(u8, entry.name));
+    }
+    return try entries.toOwnedSlice(allocator);
+}
+
+pub fn findFiles(allocator: Allocator, path: []const u8, pattern: []const u8) ![]const []const u8 {
+    var dir = try filesystem.openDirAbsolute(path, .{ .iterate = true });
+    defer dir.close();
+
+    var results = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (results.items) |item| allocator.free(item);
+        results.deinit(allocator);
+    }
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        if (entry.kind == .file) {
+            if (memory.indexOf(u8, entry.basename, pattern) != null) {
+                try results.append(allocator, try allocator.dupe(u8, entry.path));
+            }
+        }
+    }
+    return try results.toOwnedSlice(allocator);
+}
+
+pub fn searchText(allocator: Allocator, path: []const u8, pattern: []const u8) ![]const []const u8 {
+    var dir = try filesystem.openDirAbsolute(path, .{ .iterate = true });
+    defer dir.close();
+
+    var results = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (results.items) |item| allocator.free(item);
+        results.deinit(allocator);
+    }
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        if (entry.kind == .file) {
+            const file = entry.dir.openFile(entry.basename, .{}) catch continue;
+            defer file.close();
+            
+            const file_size = file.getEndPos() catch continue;
+            const buffer = allocator.alloc(u8, file_size) catch continue;
+            defer allocator.free(buffer);
+            _ = file.readAll(buffer) catch continue;
+
+            if (memory.indexOf(u8, buffer, pattern) != null) {
+                try results.append(allocator, try allocator.dupe(u8, entry.path));
+            }
+        }
+    }
+    return try results.toOwnedSlice(allocator);
 }

@@ -79,6 +79,12 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
 
     if (std.mem.eql(u8, path, "/read")) {
         try handleRead(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/read-directory")) {
+        try handleReadDirectory(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/find-files")) {
+        try handleFindFiles(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/search-text")) {
+        try handleSearchText(allocator, &request, body);
     } else if (std.mem.eql(u8, path, "/write")) {
         try handleWrite(allocator, &request, body);
     } else if (std.mem.eql(u8, path, "/replace-word")) {
@@ -116,6 +122,78 @@ fn handleRead(allocator: std.mem.Allocator, request: *std.http.Server.Request, b
     defer allocator.free(file_content);
 
     try sendResponse(request, .ok, file_content);
+}
+
+fn handleReadDirectory(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const entries = tools.readCurrentDirectory(allocator, payload_result.value.path) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error reading directory: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (entries) |entry| allocator.free(entry);
+        allocator.free(entries);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, entries, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
+}
+
+fn handleFindFiles(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, pattern: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const results = tools.findFiles(allocator, payload_result.value.path, payload_result.value.pattern) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error finding files: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (results) |result| allocator.free(result);
+        allocator.free(results);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, results, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
+}
+
+fn handleSearchText(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, pattern: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const results = tools.searchText(allocator, payload_result.value.path, payload_result.value.pattern) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error searching text: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (results) |result| allocator.free(result);
+        allocator.free(results);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, results, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
 }
 
 fn handleWrite(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
@@ -289,7 +367,11 @@ fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiCl
 
     const repository_path = payload_result.value.path;
     const diff_arguments = [_][]const u8{ "git", "-C", repository_path, "diff", "--cached" };
-    const diff_result = std.process.Child.run(.{ .allocator = allocator, .argv = &diff_arguments }) catch |err| {
+    const diff_result = std.process.Child.run(.{ 
+        .allocator = allocator, 
+        .argv = &diff_arguments,
+        .max_output_bytes = 1024 * 1024 * 10,
+    }) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Git diff failed: {any}\" }}", .{err});
         defer allocator.free(error_message);
         try sendResponse(request, .internal_server_error, error_message);

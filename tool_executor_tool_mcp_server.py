@@ -114,6 +114,32 @@ def agent_push(path: str) -> str:
     return _post("/git/push", {"path": os.path.abspath(path)})
 
 
+@mcp.tool(description="Removes a file from the git index (cache) but keeps it in the local workspace. Ideal for fixing accidentally tracked binaries.")
+def agent_git_rm_cached(path: str, file_path: str) -> str:
+    """Removes a file from the git index.
+
+
+
+    Args:
+
+        path: The path to the git repository.
+
+        file_path: The path to the file to remove from the index (relative to repository root).
+
+
+
+    Returns:
+
+        A success message or an error description.
+
+    """
+
+    return _post(
+        "/git/rm-cached",
+        {"path": os.path.abspath(path), "file_path": file_path},
+    )
+
+
 @mcp.tool(description="Creates a temporary checkpoint commit of all changes (staged and unstaged) and logs it to the database for cross-agent visibility.")
 def agent_checkpoint(path: str, alias: str, notes: str = "") -> str:
     return _post(

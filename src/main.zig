@@ -114,6 +114,8 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
         try handleGitRollback(allocator, &request, body);
     } else if (std.mem.eql(u8, path, "/git/diff")) {
         try handleGitDiff(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/git/rm-cached")) {
+        try handleGitRmCached(allocator, &request, body);
     } else if (std.mem.eql(u8, path, "/git/checkpoints/list")) {
         try handleGitCheckpointsList(allocator, database, &request, body);
     } else {
@@ -637,6 +639,34 @@ fn handleGitDiff(allocator: std.mem.Allocator, request: *std.http.Server.Request
     }
 
     try sendResponse(request, .ok, diff_result.stdout);
+}
+
+fn handleGitRmCached(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, file_path: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const repository_path = payload_result.value.path;
+    const file_to_remove = payload_result.value.file_path;
+
+    const rm_arguments = [_][]const u8{ "git", "-C", repository_path, "rm", "--cached", file_to_remove };
+    const rm_result = try std.process.Child.run(.{ 
+        .allocator = allocator, 
+        .argv = &rm_arguments,
+    });
+    defer allocator.free(rm_result.stdout);
+    defer allocator.free(rm_result.stderr);
+
+    if (rm_result.term != .Exited or rm_result.term.Exited != 0) {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Git rm --cached failed: {s}\" }}", .{rm_result.stderr});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    }
+
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleGitCheckpointsList(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {

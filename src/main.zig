@@ -131,7 +131,8 @@ fn handleRead(allocator: std.mem.Allocator, request: *std.http.Server.Request, b
     const file_content = tools.readFile(allocator, payload_result.value.path) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error reading file: {any}\" }}", .{err});
         defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
+        const status: std.http.Status = if (err == tools.ToolError.FileNotFound) .not_found else .internal_server_error;
+        try sendResponse(request, status, error_message);
         return;
     };
     defer allocator.free(file_content);
@@ -149,7 +150,8 @@ fn handleReadDirectory(allocator: std.mem.Allocator, request: *std.http.Server.R
     const entries = tools.readCurrentDirectory(allocator, payload_result.value.path) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error reading directory: {any}\" }}", .{err});
         defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
+        const status: std.http.Status = if (err == tools.ToolError.FileNotFound) .not_found else .internal_server_error;
+        try sendResponse(request, status, error_message);
         return;
     };
     defer {
@@ -250,7 +252,8 @@ fn handleWrite(allocator: std.mem.Allocator, request: *std.http.Server.Request, 
     tools.writeFileWithBackup(allocator, payload_result.value.path, payload_result.value.content) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error writing file: {any}\" }}", .{err});
         defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
+        const status: std.http.Status = if (err == tools.ToolError.FileNotFound) .not_found else .internal_server_error;
+        try sendResponse(request, status, error_message);
         return;
     };
 
@@ -272,7 +275,8 @@ fn handleReplaceWord(allocator: std.mem.Allocator, request: *std.http.Server.Req
     tools.replaceWholeWord(allocator, payload_result.value.path, payload_result.value.old, payload_result.value.new) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error replacing word: {any}\" }}", .{err});
         defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
+        const status: std.http.Status = if (err == tools.ToolError.FileNotFound) .not_found else .internal_server_error;
+        try sendResponse(request, status, error_message);
         return;
     };
 
@@ -294,7 +298,8 @@ fn handleReplaceText(allocator: std.mem.Allocator, request: *std.http.Server.Req
     tools.replaceText(allocator, payload_result.value.path, payload_result.value.old, payload_result.value.new) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error replacing text: {any}\" }}", .{err});
         defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
+        const status: std.http.Status = if (err == tools.ToolError.FileNotFound) .not_found else .internal_server_error;
+        try sendResponse(request, status, error_message);
         return;
     };
 

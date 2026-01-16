@@ -29,65 +29,56 @@ def _post(path: str, data: Dict[str, Any]) -> str:
         return f"Error connecting to Tool Executor at {url}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(description="Recursively deletes all .bak files starting from a directory. Use this to clean up the workspace after successful operations.")
 def clean_backups(path: str) -> str:
-    """Recursively deletes all .bak files starting from a directory."""
     return _post("/clean-backups", {"path": os.path.abspath(path)})
 
 
-@mcp.tool()
+@mcp.tool(description="Recursively searches for a text pattern in file contents. PREFERRED for finding usages of symbols across the project.")
 def search_text(path: str, pattern: str) -> str:
-    """Recursively searches for a text pattern in file contents."""
     return _post("/search-text", {"path": os.path.abspath(path), "pattern": pattern})
 
 
-@mcp.tool()
+@mcp.tool(description="Recursively finds files matching a pattern. Ideal for locating files based on name structure.")
 def find_files(path: str, pattern: str) -> str:
-    """Recursively finds files matching a pattern."""
     return _post("/find-files", {"path": os.path.abspath(path), "pattern": pattern})
 
 
-@mcp.tool()
+@mcp.tool(description="Lists files and subdirectories within a directory. Use this for initial situational awareness of a service's structure.")
 def read_directory(path: str) -> str:
-    """Lists files and subdirectories within a directory."""
     return _post("/read-directory", {"path": os.path.abspath(path)})
 
 
-@mcp.tool()
+@mcp.tool(description="Reads the content of a file from the workspace. Always read files before modifying them.")
 def read_file(path: str) -> str:
-    """Reads the content of a file from the workspace."""
     return _post("/read", {"path": os.path.abspath(path)})
 
 
-@mcp.tool()
+@mcp.tool(description="Writes content to a file. Automatically applies project-mandatory headers and creates a .bak backup.")
 def write_file(path: str, content: str) -> str:
-    """Writes content to a file with mandatory headers and backups."""
     return _post("/write", {"path": os.path.abspath(path), "content": content})
 
 
-@mcp.tool()
+@mcp.tool(description="Replaces a whole word in a file, respecting alphanumeric boundaries. Use this for safe variable/struct renaming.")
 def replace_whole_word(path: str, old_word: str, new_word: str) -> str:
-    """Replaces a whole word in a file, respecting alphanumeric boundaries."""
     return _post(
         "/replace-word",
         {"path": os.path.abspath(path), "old": old_word, "new": new_word},
     )
 
 
-@mcp.tool()
+@mcp.tool(description="Performs global text replacement in a file. Use with caution for multi-line or complex string changes.")
 def replace_text(path: str, old_text: str, new_text: str) -> str:
-    """Performs global text replacement in a file."""
     return _post(
         "/replace-text",
         {"path": os.path.abspath(path), "old": old_text, "new": new_text},
     )
 
 
-@mcp.tool()
+@mcp.tool(description="Updates the shared Agent Coordination Database with a new entry. Mandatory at the start and completion of every task.")
 def update_agents_db(
     alias: str, intent: str, status: str, semaphore: str = "", notes: str = ""
 ) -> str:
-    """Updates the shared Agent Coordination Database with a new entry."""
     payload = {
         "alias": alias,
         "intent": intent,
@@ -98,53 +89,45 @@ def update_agents_db(
     return _post("/agents/update", payload)
 
 
-@mcp.tool()
+@mcp.tool(description="Reads the most recent entries from the Agent Coordination Database for broad synchronization.")
 def read_agents_db(limit: int = 20) -> str:
-    """Reads the most recent entries from the Agent Coordination Database."""
     return _post("/agents/read", {"limit": limit})
 
 
-@mcp.tool()
+@mcp.tool(description="Peeks at the 5 most recent entries from the Agent Coordination Database. Use for instant awareness of the workspace story.")
 def peek_agents_db() -> str:
-    """Peeks at the 5 most recent entries from the Agent Coordination Database."""
     return _post("/agents/peek", {})
 
 
-@mcp.tool()
+@mcp.tool(description="Searches the Agent Coordination Database for specific keywords in alias, intent, or notes.")
 def search_agents_db(query: str, limit: int = 20) -> str:
-    """Searches the Agent Coordination Database for specific keywords."""
     return _post("/agents/search", {"query": query, "limit": limit})
 
 
-@mcp.tool()
+@mcp.tool(description="Generates a high-integrity commit message via Gemini and applies it to the staged changes.")
 def agent_commit(path: str, context: str) -> str:
-    """Generates a high-integrity commit message and applies it."""
     return _post("/git/commit", {"path": os.path.abspath(path), "context": context})
 
 
-@mcp.tool()
+@mcp.tool(description="Pushes local commits to the remote repository. Ensure commit standards are met first.")
 def agent_push(path: str) -> str:
-    """Pushes local commits to the remote repository."""
     return _post("/git/push", {"path": os.path.abspath(path)})
 
 
-@mcp.tool()
+@mcp.tool(description="Creates a temporary checkpoint commit of all changes (staged and unstaged) and logs it to the database for cross-agent visibility.")
 def agent_checkpoint(path: str, alias: str, notes: str = "") -> str:
-    """Creates a temporary checkpoint commit and logs it to the database."""
     return _post(
         "/git/checkpoint", {"path": os.path.abspath(path), "alias": alias, "notes": notes}
     )
 
 
-@mcp.tool()
+@mcp.tool(description="Retrieves a list of recent checkpoints for a specific repository from the coordination database.")
 def list_checkpoints(path: str, limit: int = 10) -> str:
-    """Retrieves a list of recent checkpoints for a specific repository."""
     return _post("/git/checkpoints/list", {"path": os.path.abspath(path), "limit": limit})
 
 
-@mcp.tool()
+@mcp.tool(description="Restores the repository to a previous checkpoint state. Use immediately if a build fails or logic becomes corrupted.")
 def agent_rollback(path: str, checkpoint_id: str) -> str:
-    """Restores the repository to a previous checkpoint state."""
     return _post(
         "/git/rollback", {"path": os.path.abspath(path), "checkpoint_id": checkpoint_id}
     )

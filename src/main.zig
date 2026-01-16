@@ -1,4 +1,4 @@
-
+// REF: ~/.gemini/GEMINI.md
 // DO EVERYTHING WITH LOVE, CARE, HONESTY, TRUTH, TRUST, KINDNESS, RELIABILITY, CONSISTENCY, DISCIPLINE, RESILIENCE, CRAFTSMANSHIP, HUMILITY, ALLIANCE, EXPLICITNESS
 
 const std = @import("std");
@@ -67,7 +67,7 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
     log("[REQUEST] {s} {s}\n", .{ @tagName(method), path });
 
     if (method != .POST) {
-        try sendResponse(&request, .method_not_allowed, "{{ \"error\": \"Only POST method is allowed\" }}");
+        try sendResponse(&request, .method_not_allowed, "{ \"error\": \"Only POST method is allowed\" }");
         return;
     }
 
@@ -106,14 +106,20 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
         try handleGitCommit(allocator, gemini_client, &request, body);
     } else if (std.mem.eql(u8, path, "/git/push")) {
         try handleGitPush(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/git/checkpoint")) {
+        try handleGitCheckpoint(allocator, database, &request, body);
+    } else if (std.mem.eql(u8, path, "/git/rollback")) {
+        try handleGitRollback(allocator, &request, body);
+    } else if (std.mem.eql(u8, path, "/git/checkpoints/list")) {
+        try handleGitCheckpointsList(allocator, database, &request, body);
     } else {
-        try sendResponse(&request, .not_found, "{{ \"error\": \"Not Found\" }}");
+        try sendResponse(&request, .not_found, "{ \"error\": \"Not Found\" }");
     }
 }
 
 fn handleRead(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -131,7 +137,7 @@ fn handleRead(allocator: std.mem.Allocator, request: *std.http.Server.Request, b
 
 fn handleReadDirectory(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -155,7 +161,7 @@ fn handleReadDirectory(allocator: std.mem.Allocator, request: *std.http.Server.R
 
 fn handleFindFiles(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8, pattern: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -179,7 +185,7 @@ fn handleFindFiles(allocator: std.mem.Allocator, request: *std.http.Server.Reque
 
 fn handleSearchText(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8, pattern: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -204,7 +210,7 @@ fn handleSearchText(allocator: std.mem.Allocator, request: *std.http.Server.Requ
 fn handleCleanBackups(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
         log("Error parsing JSON payload in handleCleanBackups: {s}\n", .{body});
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -232,7 +238,7 @@ fn handleWrite(allocator: std.mem.Allocator, request: *std.http.Server.Request, 
         body,
         .{} ,
     ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -244,7 +250,7 @@ fn handleWrite(allocator: std.mem.Allocator, request: *std.http.Server.Request, 
         return;
     };
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleReplaceWord(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
@@ -254,7 +260,7 @@ fn handleReplaceWord(allocator: std.mem.Allocator, request: *std.http.Server.Req
         body,
         .{} ,
     ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -266,7 +272,7 @@ fn handleReplaceWord(allocator: std.mem.Allocator, request: *std.http.Server.Req
         return;
     };
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleReplaceText(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
@@ -276,7 +282,7 @@ fn handleReplaceText(allocator: std.mem.Allocator, request: *std.http.Server.Req
         body,
         .{} ,
     ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -288,7 +294,7 @@ fn handleReplaceText(allocator: std.mem.Allocator, request: *std.http.Server.Req
         return;
     };
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleAgentsUpdate(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
@@ -298,7 +304,7 @@ fn handleAgentsUpdate(allocator: std.mem.Allocator, database: *db.Database, requ
         body,
         .{} ,
     ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -316,7 +322,7 @@ fn handleAgentsUpdate(allocator: std.mem.Allocator, database: *db.Database, requ
         return;
     };
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleAgentsRead(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
@@ -326,41 +332,13 @@ fn handleAgentsRead(allocator: std.mem.Allocator, database: *db.Database, reques
         body,
         .{} ,
     ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
 
     const chats = database.getRecentChats(payload_result.value.limit) catch |err| {
         const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error reading agents DB: {any}\" }}", .{err});
-        defer allocator.free(error_message);
-        try sendResponse(request, .internal_server_error, error_message);
-        return;
-    };
-    defer {
-        for (chats) |chat| chat.deinit(allocator);
-        allocator.free(chats);
-    }
-
-    const response_json = try std.json.Stringify.valueAlloc(allocator, chats, .{});
-    defer allocator.free(response_json);
-
-    try sendResponse(request, .ok, response_json);
-}
-fn handleAgentsSearch(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
-    const payload_result = std.json.parseFromSlice(
-        struct { query: []const u8, limit: usize },
-        allocator,
-        body,
-        .{} ,
-    ) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
-        return;
-    };
-    defer payload_result.deinit();
-
-    const chats = database.searchChats(payload_result.value.query, payload_result.value.limit) catch |err| {
-        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error searching agents DB: {any}\" }}", .{err});
         defer allocator.free(error_message);
         try sendResponse(request, .internal_server_error, error_message);
         return;
@@ -395,6 +373,35 @@ fn handleAgentsPeek(allocator: std.mem.Allocator, database: *db.Database, reques
     try sendResponse(request, .ok, response_json);
 }
 
+fn handleAgentsSearch(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(
+        struct { query: []const u8, limit: usize },
+        allocator,
+        body,
+        .{} ,
+    ) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const chats = database.searchChats(payload_result.value.query, payload_result.value.limit) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error searching agents DB: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (chats) |chat| chat.deinit(allocator);
+        allocator.free(chats);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, chats, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
+}
+
 const GeminiResponse = struct {
     candidates: []struct {
         content: struct {
@@ -407,14 +414,14 @@ const GeminiResponse = struct {
 
 fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiClient, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8, context: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
 
     const repository_path = payload_result.value.path;
     const diff_arguments = [_][]const u8{ "git", "-C", repository_path, "diff", "--cached" };
-    const diff_result = std.process.Child.run(.{ 
+    const diff_result = std.process.Child.run(.{
         .allocator = allocator, 
         .argv = &diff_arguments,
         .max_output_bytes = 1024 * 1024 * 10,
@@ -428,25 +435,25 @@ fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiCl
     defer allocator.free(diff_result.stderr);
 
     if (diff_result.stdout.len == 0) {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"No staged changes found\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"No staged changes found\" }");
         return;
     }
 
     const system_instruction = 
-        \\You are an expert software engineer. Generate a git commit message following the project's mandatory template.
-        \\
+    \\You are an expert software engineer. Generate a git commit message following the project's mandatory template.
+        \\    
         \\TEMPLATE:
         \\summary: <one line summary>
-        \\
+        \\    
         \\WHAT:
         \\- <bullet points>
-        \\
+        \\    
         \\WHY:
         \\- <bullet points>
-        \\
+        \\    
         \\HOW:
         \\- <bullet points>
-        \\
+        \\    
         \\RULES:
         \\- Changes must be atomic.
         \\- Be explicit and clear.
@@ -473,7 +480,7 @@ fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiCl
     defer parsed_response.deinit();
 
     if (parsed_response.value.candidates.len == 0 or parsed_response.value.candidates[0].content.parts.len == 0) {
-        try sendResponse(request, .internal_server_error, "{{ \"error\": \"Gemini returned no content\" }}");
+        try sendResponse(request, .internal_server_error, "{ \"error\": \"Gemini returned no content\" }");
         return;
     }
 
@@ -495,12 +502,12 @@ fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiCl
         return;
     }
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
 }
 
 fn handleGitPush(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
     const payload_result = std.json.parseFromSlice(struct { path: []const u8 }, allocator, body, .{}) catch {
-        try sendResponse(request, .bad_request, "{{ \"error\": \"Invalid JSON payload\" }}");
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
         return;
     };
     defer payload_result.deinit();
@@ -523,7 +530,98 @@ fn handleGitPush(allocator: std.mem.Allocator, request: *std.http.Server.Request
         return;
     }
 
-    try sendResponse(request, .ok, "{{ \"status\": \"success\" }}");
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
+}
+
+fn handleGitCheckpoint(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, alias: []const u8, notes: []const u8 = "" }, allocator, body, .{ .ignore_unknown_fields = true }) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const repository_path = payload_result.value.path;
+    
+    // 1. Stage all changes
+    const add_arguments = [_][]const u8{ "git", "-C", repository_path, "add", "-A" };
+    _ = try std.process.Child.run(.{ .allocator = allocator, .argv = &add_arguments });
+
+    // 2. Create checkpoint commit
+    const timestamp = std.time.timestamp();
+    const commit_msg = try std.fmt.allocPrint(allocator, "CHECKPOINT: {d}", .{timestamp});
+    defer allocator.free(commit_msg);
+    
+    const commit_arguments = [_][]const u8{ "git", "-C", repository_path, "commit", "-m", commit_msg };
+    const commit_result = try std.process.Child.run(.{ .allocator = allocator, .argv = &commit_arguments });
+    defer allocator.free(commit_result.stdout);
+    defer allocator.free(commit_result.stderr);
+
+    // 3. Get the hash
+    const rev_arguments = [_][]const u8{ "git", "-C", repository_path, "rev-parse", "HEAD" };
+    const rev_result = try std.process.Child.run(.{ .allocator = allocator, .argv = &rev_arguments });
+    defer allocator.free(rev_result.stdout);
+    defer allocator.free(rev_result.stderr);
+
+    const hash = std.mem.trim(u8, rev_result.stdout, " \n\r\t");
+
+    // 4. Save to Database
+    database.addCheckpoint(repository_path, hash, payload_result.value.alias, payload_result.value.notes) catch |err| {
+        log("Warning: Failed to log checkpoint to DB: {any}\n", .{err});
+    };
+
+    const response_json = try std.fmt.allocPrint(allocator, "{{ \"status\": \"success\", \"checkpoint_id\": \"{s}\" }}", .{hash});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
+}
+
+fn handleGitRollback(allocator: std.mem.Allocator, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, checkpoint_id: []const u8 }, allocator, body, .{}) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const repository_path = payload_result.value.path;
+    const checkpoint_id = payload_result.value.checkpoint_id;
+
+    const reset_arguments = [_][]const u8{ "git", "-C", repository_path, "reset", "--hard", checkpoint_id };
+    const reset_result = try std.process.Child.run(.{ .allocator = allocator, .argv = &reset_arguments });
+    defer allocator.free(reset_result.stdout);
+    defer allocator.free(reset_result.stderr);
+
+    if (reset_result.term != .Exited or reset_result.term.Exited != 0) {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Git reset failed: {s}\" }}", .{reset_result.stderr});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    }
+
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
+}
+
+fn handleGitCheckpointsList(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { path: []const u8, limit: usize = 10 }, allocator, body, .{ .ignore_unknown_fields = true }) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const checkpoints = database.getCheckpoints(payload_result.value.path, payload_result.value.limit) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error reading checkpoints DB: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (checkpoints) |cp| cp.deinit(allocator);
+        allocator.free(checkpoints);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, checkpoints, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
 }
 
 fn sendResponse(request: *std.http.Server.Request, status: std.http.Status, content: []const u8) !void {

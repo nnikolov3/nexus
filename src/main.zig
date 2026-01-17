@@ -64,7 +64,9 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
     var request = http_server.receiveHead() catch return;
 
     const method = request.head.method;
-    const path = request.head.target;
+    const path_original = request.head.target;
+    const path = try allocator.dupe(u8, path_original);
+    defer allocator.free(path);
 
     log("[REQUEST] {s} {s}\n", .{ @tagName(method), path });
 
@@ -118,6 +120,10 @@ fn handleRequest(allocator: std.mem.Allocator, database: *db.Database, gemini_cl
         try handleGitRmCached(allocator, &request, body);
     } else if (std.mem.eql(u8, path, "/git/checkpoints/list")) {
         try handleGitCheckpointsList(allocator, database, &request, body);
+    } else if (std.mem.eql(u8, path, "/docs/upsert")) {
+        try handleDocsUpsert(allocator, database, &request, body);
+    } else if (std.mem.eql(u8, path, "/docs/query")) {
+        try handleDocsQuery(allocator, database, &request, body);
     } else {
         try sendResponse(&request, .not_found, "{ \"error\": \"Not Found\" }");
     }
@@ -451,7 +457,7 @@ fn handleGitCommit(allocator: std.mem.Allocator, gemini_client: *gemini.GeminiCl
     }
 
     const system_instruction = 
-    \\You are an expert software engineer. Generate a git commit message following the project's mandatory template.
+        \\You are an expert software engineer. Generate a git commit message following the project's mandatory template.
         \\    
         \\TEMPLATE:
         \\summary: <one line summary>
@@ -688,6 +694,47 @@ fn handleGitCheckpointsList(allocator: std.mem.Allocator, database: *db.Database
     }
 
     const response_json = try std.json.Stringify.valueAlloc(allocator, checkpoints, .{});
+    defer allocator.free(response_json);
+
+    try sendResponse(request, .ok, response_json);
+}
+
+fn handleDocsUpsert(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { url: []const u8, title: []const u8, content: []const u8, tags: []const u8 = "" }, allocator, body, .{ .ignore_unknown_fields = true }) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    database.upsertDocumentation(payload_result.value.url, payload_result.value.title, payload_result.value.content, payload_result.value.tags) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error upserting documentation: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+
+    try sendResponse(request, .ok, "{ \"status\": \"success\" }");
+}
+
+fn handleDocsQuery(allocator: std.mem.Allocator, database: *db.Database, request: *std.http.Server.Request, body: []const u8) !void {
+    const payload_result = std.json.parseFromSlice(struct { query: []const u8, limit: usize = 5 }, allocator, body, .{ .ignore_unknown_fields = true }) catch {
+        try sendResponse(request, .bad_request, "{ \"error\": \"Invalid JSON payload\" }");
+        return;
+    };
+    defer payload_result.deinit();
+
+    const results = database.queryDocumentation(payload_result.value.query, payload_result.value.limit) catch |err| {
+        const error_message = try std.fmt.allocPrint(allocator, "{{ \"error\": \"Error querying documentation: {any}\" }}", .{err});
+        defer allocator.free(error_message);
+        try sendResponse(request, .internal_server_error, error_message);
+        return;
+    };
+    defer {
+        for (results) |res| res.deinit(allocator);
+        allocator.free(results);
+    }
+
+    const response_json = try std.json.Stringify.valueAlloc(allocator, results, .{});
     defer allocator.free(response_json);
 
     try sendResponse(request, .ok, response_json);

@@ -187,5 +187,58 @@ def agent_rollback(path: str, checkpoint_id: str) -> str:
     )
 
 
+@mcp.tool(description="Fetches documentation from a URL, cleans it, and stores it in the database for later querying.")
+def sync_documentation(url: str, tags: str = "") -> str:
+    """Fetches and persists documentation.
+
+    Args:
+        url: The URL to scrape (e.g., Zig std docs).
+        tags: Optional comma-separated tags.
+    """
+    import trafilatura
+    
+    try:
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return f"Error: Could not fetch content from {url}"
+            
+        content = trafilatura.extract(downloaded, include_comments=False, include_tables=True, no_fallback=False)
+        if not content:
+            # Fallback for source code or raw text files
+            content = downloaded
+            if isinstance(content, bytes):
+                content = content.decode('utf-8', errors='replace')
+            
+        if not content:
+            return f"Error: Could not extract clean text from {url}"
+            
+        # Get a title from the HTML metadata if possible
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(downloaded, 'html.parser')
+        title = soup.title.string if soup.title else url
+        
+        payload = {
+            "url": url,
+            "title": title.strip(),
+            "content": content,
+            "tags": tags
+        }
+        
+        return _post("/docs/upsert", payload)
+    except Exception as e:
+        return f"Error during sync: {str(e)}"
+
+
+@mcp.tool(description="Queries the local documentation database for technical information.")
+def query_documentation(query: str, limit: int = 3) -> str:
+    """Search for technical info in the local documentation cache.
+
+    Args:
+        query: The search term (e.g., 'std.http client').
+        limit: Number of results to return.
+    """
+    return _post("/docs/query", {"query": query, "limit": limit})
+
+
 if __name__ == "__main__":
     mcp.run()

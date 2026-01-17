@@ -2,4 +2,6 @@
 zig-out/
 *.bak
 *.tmp
-
+__pycache__/
+*.pyc
+dist/

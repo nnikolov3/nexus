@@ -75,10 +75,9 @@ pub fn writeFileWithBackup(allocator: Allocator, path: []const u8, content: []co
     }
     defer if (header_buffer.len > 0) allocator.free(header_buffer);
 
-    // Only backup and write if content has changed
     if (existing_content) |old| {
         if (memory.eql(u8, old, final_content)) {
-            return; // No change, skip backup and write
+            return;
         }
         try filesystem.cwd().copyFile(path, filesystem.cwd(), backup_path, .{});
     }
@@ -223,7 +222,6 @@ pub fn cleanBackups(allocator: Allocator, path: []const u8) !usize {
 
     var count: usize = 0;
     while (try walker.next()) |entry| {
-        // We don't ignore directories here because we want to clean backups everywhere
         if (entry.kind == .file and memory.endsWith(u8, entry.basename, ".bak")) {
             entry.dir.deleteFile(entry.basename) catch continue;
             count += 1;
